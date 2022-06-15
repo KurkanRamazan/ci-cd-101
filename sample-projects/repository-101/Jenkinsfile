@@ -1,0 +1,53 @@
+// Pipeline repository-101
+def Greet(name) {
+    echo "Hello -${name}-"
+}
+def deleteFile(path) {
+}
+node {
+    stage('Hello') {
+        Greet(env.JOB_NAME)
+        Greet(env.BRANCH_NAME)
+        echo "${pwd()}"
+    }
+    stage('Checkout') {
+        checkout scm
+    }
+    stage('Build') {
+        echo "Execute foo-make.sh"
+        sh "bash foo-make.sh"
+    }
+    stage('Generate artifacts(zip)') {
+        if (!["master", "dev"].contains(env.BRANCH_NAME)){
+            echo "Skip the branch ${env.BRANCH_NAME}"
+            return;
+        }
+        sh "rm -f *.tar.gz 2> /dev/null  || true"
+        sh "tar -zcf dist-${env.BUILD_ID}.tar.gz dist"
+        archiveArtifacts artifacts: "dist-${env.BUILD_ID}.tar.gz", fingerprint: true
+    }
+    stage('Upload to FTP') {
+        if (!["master", "dev"].contains(env.BRANCH_NAME)){
+            echo "Skip the branch ${env.BRANCH_NAME}"
+            return;
+        }
+        
+        ftpPublisher alwaysPublishFromMaster: true, continueOnError: false, failOnError: false, publishers: [
+            [configName: 'localhost-ftp-server', transfers: [
+                [
+                    asciiMode: false
+                    , cleanRemote: false
+                    , excludes: ''
+                    , flatten: false
+                    , makeEmptyDirs: false
+                    , noDefaultExcludes: false
+                    , patternSeparator: '[, ]+'
+                    , remoteDirectory: "/${env.BRANCH_NAME}" // buraya yazılan kısım, ftp-server ayarlarında verilen path e eklenir.
+                    , remoteDirectorySDF: false
+                    , removePrefix: ''
+                    , sourceFiles: '**.tar.gz'
+                ]
+            ], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: true]
+        ]
+    }
+}

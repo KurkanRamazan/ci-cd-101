@@ -1,0 +1,103 @@
+version: "3.1"
+services:
+  postgres:
+    image: postgres:14.3-alpine
+    environment:
+      - "POSTGRES_USER=${POSTGRES_USER}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+      - "POSTGRES_DB=${POSTGRES_DB}"
+    volumes:
+      - "db-data:/var/lib/postgresql/data"
+      - ./resources/postgresql-scripts/create-gogs-db.sh:/docker-entrypoint-initdb.d/create-gogs-db.sh
+    networks:
+      - accessible-from-host-network
+    ports:
+      - "5432:5432"
+    restart: always
+  gogs:
+    # https://hub.docker.com/r/gogs/gogs
+    image: gogs/gogs:0.12
+    environment:
+      - "RUN_CROND=true"
+    volumes:
+      - "gogs-data:/data"
+      # clean this volume binding for a clean gog setup
+      - ./resources/gogs-app.ini:/data/gogs/conf/app.ini
+    depends_on:
+      - postgres
+    networks:
+      - accessible-from-host-network
+    ports:
+      - "10022:22"
+      - "3000:3000"
+    restart: always
+  jenkins:
+    # https://hub.docker.com/r/jenkins/jenkins
+    # https://github.com/jenkinsci/docker/blob/master/README.md
+    image: jenkins/jenkins:centos7
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - accessible-from-host-network
+    ports:
+      - 8080:8080
+      - 50000:50000
+    restart: always
+  ftp-server:
+    # https://hub.docker.com/r/gists/pure-ftpd
+    image: stilliard/pure-ftpd:hardened
+    environment:
+      PUBLICHOST: "localhost"
+      FTP_USER_NAME: ftpuser
+      FTP_USER_PASS: ftpuser-password
+      FTP_USER_HOME: /home/ftpuser
+    volumes:
+      - data-etc-pureftpd:/etc/pureftpd
+      - data-home-ftpuser:/home/ftpuser
+    networks:
+      - accessible-from-host-network
+    ports:
+      - "10021:21"
+      - "30000-30009:30000-30009"
+    restart: always
+
+networks:
+  accessible-from-host-network:
+    driver: bridge
+  not-accessible-from-host-network:
+    internal: true
+
+volumes:
+  db-data:
+    driver: local
+  gogs-data:
+    driver: local
+  jenkins-data:
+    driver: local
+  data-etc-pureftpd:
+    driver: local
+  data-home-ftpuser:
+    driver: local
+# https://stackoverflow.com/questions/31746182/docker-compose-wait-for-container-x-before-starting-y
+# version: '2.1'
+
+# services:
+#   app:
+#     build: app/.
+#     depends_on:
+#       rabbit:
+#         condition: service_healthy
+#     links:
+#         - rabbit
+
+#   rabbit:
+#     build: rabbitmq/.
+#     ports:
+#         - "15672:15672"
+#         - "5672:5672"
+#     healthcheck:
+#         test: ["CMD", "curl", "-f", "http://localhost:15672"]
+#         interval: 30s
+#         timeout: 10s
+#         retries: 5
